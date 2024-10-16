@@ -4,16 +4,23 @@ import io
 import PyPDF2
 import logging
 import json
+import streamlit as st
 
 # 将 LightRAG 目录添加到 Python 路径
 current_dir = os.path.dirname(os.path.abspath(__file__))
 lightrag_dir = os.path.join(current_dir, 'LightRAG')
 sys.path.append(lightrag_dir)
 
-import streamlit as st
 from lightrag.lightrag import LightRAG, QueryParam
 from lightrag.llm import openai_complete_if_cache, openai_embedding
 from lightrag.utils import EmbeddingFunc
+
+# 设置 OpenAI API 密钥
+if 'openai' in st.secrets:
+    os.environ["OPENAI_API_KEY"] = st.secrets["openai"]["api_key"]
+    os.environ["OPENAI_API_BASE"] = st.secrets["openai"]["base_url"]
+else:
+    st.error("OpenAI API 密钥未设置。请在 Streamlit Cloud 的 Secrets 中配置。")
 
 @st.cache_resource
 def load_lightrag():
@@ -118,7 +125,7 @@ def main():
     """)
 
     # 显示数据状态
-    data_dir = os.path.join(current_dir, 'lightrag_data')
+    data_dir = os.path.join(".", 'lightrag_data')
     if os.path.exists(data_dir) and os.listdir(data_dir):
         st.sidebar.success("数据已加载")
         
