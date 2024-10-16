@@ -3,6 +3,7 @@ import os
 import io
 import PyPDF2
 import logging
+import json
 
 # 将 LightRAG 目录添加到 Python 路径
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -76,6 +77,21 @@ def get_query_mode_explanation(mode):
     }
     return explanations.get(mode, "未知查询模式")
 
+def get_uploaded_documents(data_dir):
+    uploaded_docs_file = os.path.join(data_dir, "uploaded_documents.json")
+    if os.path.exists(uploaded_docs_file):
+        with open(uploaded_docs_file, "r") as f:
+            return json.load(f)
+    return []
+
+def save_uploaded_document(data_dir, filename):
+    uploaded_docs_file = os.path.join(data_dir, "uploaded_documents.json")
+    uploaded_docs = get_uploaded_documents(data_dir)
+    if filename not in uploaded_docs:
+        uploaded_docs.append(filename)
+        with open(uploaded_docs_file, "w") as f:
+            json.dump(uploaded_docs, f)
+
 def get_loaded_files(data_dir):
     loaded_files = []
     for filename in os.listdir(data_dir):
@@ -106,11 +122,14 @@ def main():
     if os.path.exists(data_dir) and os.listdir(data_dir):
         st.sidebar.success("数据已加载")
         
-        # 显示已加载的文件
-        loaded_files = get_loaded_files(data_dir)
-        st.sidebar.subheader("已加载的文件:")
-        for file in loaded_files:
-            st.sidebar.text(file)
+        # 显示已上传的文档
+        uploaded_docs = get_uploaded_documents(data_dir)
+        if uploaded_docs:
+            st.sidebar.subheader("已上传的文档:")
+            for doc in uploaded_docs:
+                st.sidebar.text(doc)
+        else:
+            st.sidebar.info("尚未上传文档")
     else:
         st.sidebar.warning("尚未加载数据")
 
@@ -122,39 +141,41 @@ def main():
             with st.spinner('正在处理文档...'):
                 pdf_text = extract_text_from_pdf(uploaded_file)
                 lightrag.insert(pdf_text)
+                save_uploaded_document(data_dir, uploaded_file.name)
             st.success("文档处理完成！")
             show_process_explanation()
-            st.rerun()  # 使用 st.rerun() 替代 st.experimental_rerun()
+            st.rerun()
 
     # 查询部分
     st.header("查询")
-    query_mode = st.selectbox(
-        "选择查询模式",
-        ("naive", "local", "global", "hybrid"),
-        format_func=lambda x: {"naive": "朴素", "local": "局部", "global": "全局", "hybrid": "混合"}[x]
-    )
-
-    # 显示选中的查询模式说明
-    st.markdown(get_query_mode_explanation(query_mode))
-
+    
+    # 使用标签页替代下拉菜单
+    tabs = st.tabs(["朴素", "局部", "全局", "混合"])
+    query_modes = ["naive", "local", "global", "hybrid"]
+    
+    # 创建一个共享的文本输入框
     query = st.text_input("请输入您的问题:", placeholder="例如：患者的主要症状是什么？")
 
-    if query:  # 如果有输入，直接执行查询
-        if not os.listdir(data_dir):
-            st.warning("请先上传并处理文档，然后再进行查询。")
-        else:
-            with st.spinner('正在检索中...'):
-                try:
-                    result = lightrag.query(query, param=QueryParam(mode=query_mode))
-                    if result:
-                        st.subheader("检索结果:")
-                        st.write(result)
-                    else:
-                        st.warning("未能获取查询结果，请检查系统日志或重试。")
-                except Exception as e:
-                    st.error(f"查询过程中发生错误: {str(e)}")
-                    st.info("请确保已经正确上传并处理了文档。如果问题持续，请尝试清理数据并重新上传文档。")
-                    logging.exception("Query error")
+    for tab, mode in zip(tabs, query_modes):
+        with tab:
+            st.markdown(get_query_mode_explanation(mode))
+            
+            if query:  # 如果有输入，执行查询
+                if not os.listdir(data_dir):
+                    st.warning("请先上传并处理文档，然后再进行查询。")
+                else:
+                    with st.spinner('正在检索中...'):
+                        try:
+                            result = lightrag.query(query, param=QueryParam(mode=mode))
+                            if result:
+                                st.subheader("检索结果:")
+                                st.write(result)
+                            else:
+                                st.warning("未能获取查询结果，请检查系统日志或重试。")
+                        except Exception as e:
+                            st.error(f"查询过程中发生错误: {str(e)}")
+                            st.info("请确保已经正确上传并处理了文档。如果问题持续，请尝试清理数据并重新上传文档。")
+                            logging.exception("Query error")
 
     # 添加清理数据的功能
     if st.sidebar.button("清理所有数据"):
@@ -162,7 +183,7 @@ def main():
         shutil.rmtree(data_dir, ignore_errors=True)
         os.makedirs(data_dir, exist_ok=True)
         st.sidebar.success("所有数据已清理")
-        st.rerun()  # 这里也使用 st.rerun()
+        st.rerun()
 
 if __name__ == "__main__":
     main()
