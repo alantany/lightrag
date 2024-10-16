@@ -6,7 +6,7 @@ from functools import partial
 from typing import Type, cast, Any
 from transformers import AutoModel,AutoTokenizer, AutoModelForCausalLM
 
-from .llm import gpt_4o_complete, gpt_4o_mini_complete, openai_embedding, hf_model_complete, hf_embedding
+from .llm import gpt_4o_complete, gpt_4o_mini_complete, openai_embedding, hf_model_complete, hf_embedding, openai_complete_if_cache
 from .operate import (
     chunking_by_token_size,
     extract_entities,
@@ -83,7 +83,7 @@ class LightRAG:
     embedding_func_max_async: int = 16
 
     # LLM
-    llm_model_func: callable = gpt_4o_mini_complete#hf_model_complete#
+    llm_model_func: callable = None
     llm_model_name: str = 'meta-llama/Llama-3.2-1B-Instruct'#'meta-llama/Llama-3.2-1B'#'google/gemma-2-2b-it'
     llm_model_max_token_size: int = 32768
     llm_model_max_async: int = 16
@@ -98,6 +98,9 @@ class LightRAG:
     # extension
     addon_params: dict = field(default_factory=dict)
     convert_response_to_json_func: callable = convert_response_to_json
+
+    api_key: str = None
+    api_base: str = None
 
     def __post_init__(self):        
         if self.working_dir:
@@ -114,6 +117,69 @@ class LightRAG:
         _print_config = ",\n  ".join([f"{k} = {v}" for k, v in asdict(self).items()])
         logger.debug(f"LightRAG init with param:\n  {_print_config}\n")
 
+        if self.working_dir:
+            self.full_docs = self.key_string_value_json_storage_cls(
+                namespace="full_docs", global_config=asdict(self)
+            )
+            self.text_chunks = self.key_string_value_json_storage_cls(
+                namespace="text_chunks", global_config=asdict(self)
+            )
+        else:
+            self.full_docs = None
+            self.text_chunks = None
+
+        self.llm_response_cache = (
+            self.key_string_value_json_storage_cls(
+                namespace="llm_response_cache", global_config=asdict(self)
+            )
+            if self.enable_llm_cache
+            else None
+        )
+        self.chunk_entity_relation_graph = self.graph_storage_cls(
+            namespace="chunk_entity_relation", global_config=asdict(self)
+        )
+
+        self.embedding_func = limit_async_func_call(self.embedding_func_max_async)(
+            self.embedding_func
+        )
+
+        self.entities_vdb = (
+            self.vector_db_storage_cls(
+                namespace="entities",
+                global_config=asdict(self),
+                embedding_func=self.embedding_func,
+                meta_fields={"entity_name"}
+            )
+        )
+        self.relationships_vdb = (
+            self.vector_db_storage_cls(
+                namespace="relationships",
+                global_config=asdict(self),
+                embedding_func=self.embedding_func,
+                meta_fields={"src_id", "tgt_id"}
+            )
+        )
+        self.chunks_vdb = (
+            self.vector_db_storage_cls(
+                namespace="chunks",
+                global_config=asdict(self),
+                embedding_func=self.embedding_func,
+            )
+        )
+        
+        if self.llm_model_func is None:
+            from .llm import openai_complete_if_cache
+            self.llm_model_func = openai_complete_if_cache
+
+        self.llm_model_func = limit_async_func_call(self.llm_model_max_async)(
+            partial(self.llm_model_func, hashing_kv=self.llm_response_cache)
+        )
+
+        if self.api_key:
+            os.environ["OPENAI_API_KEY"] = self.api_key
+        if self.api_base:
+            os.environ["OPENAI_API_BASE"] = self.api_base
+        
         if self.working_dir:
             self.full_docs = self.key_string_value_json_storage_cls(
                 namespace="full_docs", global_config=asdict(self)
@@ -256,7 +322,17 @@ class LightRAG:
     
     async def aquery(self, query: str, param: QueryParam = QueryParam()):
         try:
-            if param.mode == "local":
+            logger.info(f"Starting query with mode: {param.mode}")
+            
+            if param.mode == "naive":
+                response = await naive_query(
+                    query,
+                    self.chunks_vdb,
+                    self.text_chunks,
+                    param,
+                    asdict(self),
+                )
+            elif param.mode == "local":
                 response = await local_query(
                     query,
                     self.chunk_entity_relation_graph,
@@ -286,14 +362,6 @@ class LightRAG:
                     param,
                     asdict(self),
                 )
-            elif param.mode == "naive":
-                response = await naive_query(
-                    query,
-                    self.chunks_vdb,
-                    self.text_chunks,
-                    param,
-                    asdict(self),
-                )
             else:
                 raise ValueError(f"Unknown mode {param.mode}")
             
@@ -309,3 +377,4 @@ class LightRAG:
             raise
 
     
+

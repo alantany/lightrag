@@ -4,30 +4,38 @@ import io
 import PyPDF2
 import logging
 import json
-import streamlit as st
+import openai
 
 # 将 LightRAG 目录添加到 Python 路径
 current_dir = os.path.dirname(os.path.abspath(__file__))
 lightrag_dir = os.path.join(current_dir, 'LightRAG')
 sys.path.append(lightrag_dir)
 
+import streamlit as st
 from lightrag.lightrag import LightRAG, QueryParam
 from lightrag.llm import openai_complete_if_cache, openai_embedding
 from lightrag.utils import EmbeddingFunc
 
-# 设置 OpenAI API 密钥
-if 'openai' in st.secrets:
-    os.environ["OPENAI_API_KEY"] = st.secrets["openai"]["api_key"]
-    os.environ["OPENAI_API_BASE"] = st.secrets["openai"]["base_url"]
-else:
-    st.error("OpenAI API 密钥未设置。请在 Streamlit Cloud 的 Secrets 中配置。")
+# 设置环境变量
+os.environ["OPENAI_API_KEY"] = "sk-iM6Jc42voEnIOPSKJfFY0ri7chsz4D13sozKyqg403Euwv5e"
+os.environ["OPENAI_API_BASE"] = "https://api.chatanywhere.tech/v1"
+
+# 设置 OpenAI 配置
+openai.api_key = os.environ["OPENAI_API_KEY"]
+openai.api_base = os.environ["OPENAI_API_BASE"]
 
 @st.cache_resource
 def load_lightrag():
     return LightRAG(
         working_dir="./lightrag_data",
-        # 移除 log_file 参数
-        # 其他参数保持不变
+        llm_model_func=openai_complete_if_cache,
+        embedding_func=EmbeddingFunc(
+            embedding_dim=1536,
+            max_token_size=8192,
+            func=openai_embedding
+        ),
+        api_key=os.environ["OPENAI_API_KEY"],
+        api_base=os.environ["OPENAI_API_BASE"]
     )
 
 def extract_text_from_pdf(pdf_file):
@@ -42,7 +50,7 @@ def show_process_explanation():
     st.write("""
     1. 文档分块：将上传的 PDF 文档分割成小块文本。
     2. 实体提取：从每个文本块中提取关键实体和关系。
-    3. 向量化：将文本块、实体和关系转换为向量表示。
+     3. 向量化：将文本块、实体和关系转换为向量表示。
     4. 知识图谱构建：基于提取的实体和关系构建知识图谱。
     5. 存储：将向量和图谱信息存储在相应的数据结构中。
     """)
@@ -107,10 +115,16 @@ def get_loaded_files(data_dir):
     return loaded_files
 
 def main():
+    logging.basicConfig(level=logging.INFO, filename='app.log', filemode='w', format='%(name)s - %(levelname)s - %(message)s')
+    
     st.set_page_config(page_title="LightRAG 医疗文档分析", page_icon="🏥", layout="wide")
     
     # 配置日志
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+    
+    # 添加调试信息
+    st.write("OpenAI API Key set:", bool(openai.api_key))
+    st.write("OpenAI Base URL:", openai.api_base)
     
     st.title("🏥 LightRAG 医疗文档分析系统")
 
@@ -125,7 +139,7 @@ def main():
     """)
 
     # 显示数据状态
-    data_dir = os.path.join(".", 'lightrag_data')
+    data_dir = os.path.join(current_dir, 'lightrag_data')
     if os.path.exists(data_dir) and os.listdir(data_dir):
         st.sidebar.success("数据已加载")
         
@@ -169,17 +183,20 @@ def main():
             
             if query:  # 如果有输入，执行查询
                 if not os.listdir(data_dir):
-                    st.warning("请先上传并处理文档，然后再进行查询。")
+                    st.warning("请先上传并处理文档，然后再进行查���。")
                 else:
                     with st.spinner('正在检索中...'):
                         try:
+                            logging.info(f"Executing query: {query} with mode: {mode}")
                             result = lightrag.query(query, param=QueryParam(mode=mode))
+                            logging.info(f"Query result: {result}")
                             if result:
                                 st.subheader("检索结果:")
                                 st.write(result)
                             else:
                                 st.warning("未能获取查询结果，请检查系统日志或重试。")
                         except Exception as e:
+                            logging.exception(f"Error during query: {str(e)}")
                             st.error(f"查询过程中发生错误: {str(e)}")
                             st.info("请确保已经正确上传并处理了文档。如果问题持续，请尝试清理数据并重新上传文档。")
                             logging.exception("Query error")

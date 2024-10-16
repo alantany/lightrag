@@ -20,12 +20,15 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
     retry=retry_if_exception_type((RateLimitError, APIConnectionError, Timeout)),
 )
 async def openai_complete_if_cache(
-    model, prompt, system_prompt=None, history_messages=[], base_url=None, api_key=None, **kwargs
+    prompt, system_prompt=None, history_messages=[], base_url=None, api_key=None, **kwargs
 ) -> str:
-    if api_key:
-        os.environ["OPENAI_API_KEY"] = api_key
+    if api_key is None:
+        api_key = os.environ.get("OPENAI_API_KEY")
+    if base_url is None:
+        base_url = os.environ.get("OPENAI_API_BASE")
 
-    openai_async_client = AsyncOpenAI() if base_url is None else AsyncOpenAI(base_url=base_url)
+    model = kwargs.pop('model', "gpt-4o-mini")  # 使用默认模型，如果没有指定的话
+    openai_async_client = AsyncOpenAI(api_key=api_key, base_url=base_url)
     hashing_kv: BaseKVStorage = kwargs.pop("hashing_kv", None)
     messages = []
     if system_prompt:
@@ -170,16 +173,13 @@ async def ollama_model_complete(
     )
 
 @wrap_embedding_func_with_attrs(embedding_dim=1536, max_token_size=8192)
-@retry(
-    stop=stop_after_attempt(3),
-    wait=wait_exponential(multiplier=1, min=4, max=10),
-    retry=retry_if_exception_type((RateLimitError, APIConnectionError, Timeout)),
-)
 async def openai_embedding(texts: list[str], model: str = "text-embedding-3-small", base_url: str = None, api_key: str = None) -> np.ndarray:
-    if api_key:
-        os.environ["OPENAI_API_KEY"] = api_key
+    if api_key is None:
+        api_key = os.environ.get("OPENAI_API_KEY")
+    if base_url is None:
+        base_url = os.environ.get("OPENAI_API_BASE")
 
-    openai_async_client = AsyncOpenAI() if base_url is None else AsyncOpenAI(base_url=base_url)
+    openai_async_client = AsyncOpenAI(api_key=api_key, base_url=base_url)
     response = await openai_async_client.embeddings.create(
         model=model, input=texts, encoding_format="float"
     )

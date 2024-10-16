@@ -979,11 +979,12 @@ async def naive_query(
         content_data = "\n".join(content_data)
         
         llm_model_func = global_config["llm_model_func"]
+        prompt = PROMPTS["naive_rag_response"].format(
+            content_data=content_data, response_type=param.response_type
+        )
         response = await llm_model_func(
-            PROMPTS["naive_rag_response"].format(
-                content_data=content_data, response_type=param.response_type
-            ),
-            system_prompt="You are a helpful assistant.",
+            prompt=prompt,
+            system_prompt="You are a helpful assistant. Please respond in Chinese.",
         )
         logger.info(f"LLM response: {response}")
         
