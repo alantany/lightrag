@@ -17,7 +17,7 @@ from lightrag.llm import openai_complete_if_cache, openai_embedding
 from lightrag.utils import EmbeddingFunc
 
 # 设置环境变量
-os.environ["OPENAI_API_KEY"] = "sk-iM6Jc42voEnIOPSKJfFY0ri7chsz4D13sozKyqg403Euwv5e"
+os.environ["OPENAI_API_KEY"] = "sk-1pUmQlsIkgla3CuvKTgCrzDZ3r0pBxO608YJvIHCN18lvOrn"
 os.environ["OPENAI_API_BASE"] = "https://api.chatanywhere.tech/v1"
 
 # 设置 OpenAI 配置
@@ -156,14 +156,16 @@ def main():
 
     # 文件上传部分
     st.header("上传医疗文档")
-    uploaded_file = st.file_uploader("选择一个PDF文件", type="pdf")
-    if uploaded_file is not None:
+    uploaded_files = st.file_uploader("选择一个或多个PDF文件", type="pdf", accept_multiple_files=True)
+    
+    if uploaded_files:
         if st.button("处理文档"):
             with st.spinner('正在处理文档...'):
-                pdf_text = extract_text_from_pdf(uploaded_file)
-                lightrag.insert(pdf_text)
-                save_uploaded_document(data_dir, uploaded_file.name)
-            st.success("文档处理完成！")
+                for uploaded_file in uploaded_files:
+                    pdf_text = extract_text_from_pdf(uploaded_file)
+                    lightrag.insert(pdf_text)
+                    save_uploaded_document(data_dir, uploaded_file.name)
+                    st.success(f"文档 {uploaded_file.name} 处理完成！")
             show_process_explanation()
             st.rerun()
 
@@ -183,7 +185,7 @@ def main():
             
             if query:  # 如果有输入，执行查询
                 if not os.listdir(data_dir):
-                    st.warning("请先上传并处理文档，然后再进行查���。")
+                    st.warning("请先上传并处理文档，然后再进行查找。")
                 else:
                     with st.spinner('正在检索中...'):
                         try:
