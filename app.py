@@ -17,7 +17,7 @@ from lightrag.llm import openai_complete_if_cache, openai_embedding
 from lightrag.utils import EmbeddingFunc
 
 # 设置环境变量
-os.environ["OPENAI_API_KEY"] = "sk-iM6Jc42voEnIOPSKJfFY0ri7chsz4D13sozKyqg403Euwv5e"
+os.environ["OPENAI_API_KEY"] = "sk-1pUmQlsIkgla3CuvKTgCrzDZ3r0pBxO608YJvIHCN18lvOrn"
 os.environ["OPENAI_API_BASE"] = "https://api.chatanywhere.tech/v1"
 
 # 设置 OpenAI 配置
