@@ -55,7 +55,7 @@ class LightRAG:
     log_file: str = None
 
     # text chunking
-    chunk_token_size: int = 1200
+    chunk_token_size: int = 800
     chunk_overlap_token_size: int = 100
     tiktoken_model_name: str = "gpt-4o-mini"
 
@@ -85,7 +85,7 @@ class LightRAG:
     # LLM
     llm_model_func: callable = None
     llm_model_name: str = 'meta-llama/Llama-3.2-1B-Instruct'#'meta-llama/Llama-3.2-1B'#'google/gemma-2-2b-it'
-    llm_model_max_token_size: int = 32768
+    llm_model_max_token_size: int = 4000
     llm_model_max_async: int = 16
 
     # storage
